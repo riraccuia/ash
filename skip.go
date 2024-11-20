@@ -9,16 +9,15 @@ import (
 )
 
 const (
-	MaxLevel = 16
-	PValue   = 0.5 // p = 1/2
+	PValue = 0.5 // p = 1/2
 )
 
-var probabilities [MaxLevel]uint32
+var probabilities [64]uint32
 
 func init() {
 	probability := 1.0
 
-	for level := 0; level < MaxLevel; level++ {
+	for level := 0; level < 64; level++ {
 		probabilities[level] = uint32(probability * float64(math.MaxUint32))
 		probability *= PValue
 	}
@@ -27,29 +26,56 @@ func init() {
 type SkipList struct {
 	start    *node
 	topLevel uint64
+	maxLevel uint64
 }
 
-func NewSkipList() *SkipList {
-	sl := &SkipList{}
-	sl.start = &node{}
-	sl.topLevel = 1
+func NewSkipList(maxLevel int) *SkipList {
+	if maxLevel < 1 || maxLevel > 64 {
+		panic("maxLevel must be between 1 and 64")
+	}
+	sl := &SkipList{
+		topLevel: 1,
+		maxLevel: uint64(maxLevel),
+	}
+	sl.start = &node{
+		key:   0,
+		tower: NewTower(),
+	}
+	for i := 0; i < maxLevel; i++ {
+		sl.start.tower.add(i, nil)
+	}
 	return sl
 }
 
-func randomHeight() int {
+func randomHeight(maxLevel int) int {
 	seed := fastrand()
 
 	height := 1
-	for height < MaxLevel && seed <= probabilities[height] {
+	for height < maxLevel && seed <= probabilities[height] {
 		height++
 	}
 
 	return height
 }
 
+func (sl *SkipList) updateTopLevel(level uint64) {
+	if level == sl.maxLevel {
+		return
+	}
+	for {
+		topLevel := atomic.LoadUint64(&sl.topLevel)
+		if level <= topLevel {
+			break
+		}
+		if atomic.CompareAndSwapUint64(&sl.topLevel, topLevel, level) {
+			break
+		}
+	}
+}
+
 func (sl *SkipList) Clear() {
 	for level := int(atomic.LoadUint64(&sl.topLevel) - 1); level >= 0; level-- {
-		sl.start.levels.updateNext(level, nil)
+		sl.start.tower.updateNext(level, nil)
 	}
 }
 
@@ -127,19 +153,25 @@ func (sl *SkipList) search(key uint64) (nd *node) {
 	return
 }
 
-func (sl *SkipList) findNode(key uint64, full bool) (nd *node, pred, succ [MaxLevel]*node) {
-	p := sl.start
-	for level := int(atomic.LoadUint64(&sl.topLevel) - 1); level >= 0; level-- {
-		next := p.next(level)
+func (sl *SkipList) findNode(key uint64, full bool) (nd *node, pred, succ []*node) {
+	var (
+		lev      *level
+		prev     = sl.start
+		topLevel = int(atomic.LoadUint64(&sl.topLevel))
+	)
+	pred, succ = make([]*node, topLevel), make([]*node, topLevel)
+	for lev = prev.tower.getLevel(topLevel - 1); lev != nil; lev = lev.down() {
+		next := (*node)(lev.next())
 		for next != nil && key > next.key {
-			p = next
-			next = p.next(level)
+			prev = next
+			lev = prev.tower.top
+			next = (*node)(lev.next())
 		}
-		pred[level] = p
-		succ[level] = next
+		pred[lev.id] = prev
+		succ[lev.id] = next
 		if next != nil && key == next.key {
 			nd = next
-			succ[level] = next.next(level)
+			succ[lev.id] = (*node)(next.tower.top.next())
 			if !full {
 				return
 			}
@@ -151,7 +183,7 @@ func (sl *SkipList) findNode(key uint64, full bool) (nd *node, pred, succ [MaxLe
 func (sl *SkipList) storeSafe(key uint64, val interface{}) {
 	var (
 		nd           *node
-		preds, succs [MaxLevel]*node
+		preds, succs []*node
 		untilLevel   int
 	)
 
@@ -165,21 +197,25 @@ func (sl *SkipList) storeSafe(key uint64, val interface{}) {
 			}
 			return
 		}
-
 		nd = &node{
-			key: key,
-			val: unsafe.Pointer(&val),
+			key:   key,
+			val:   unsafe.Pointer(&val),
+			tower: NewTower(),
 		}
 
-		untilLevel = randomHeight()
+		untilLevel = randomHeight(int(sl.maxLevel))
 		sl.updateTopLevel(uint64(untilLevel))
 
 		// link all the successors to the new node
 		for level := 0; level < untilLevel; level++ {
-			nd.add(level, succs[level])
+			var next *node
+			if level < len(succs) {
+				next = succs[level]
+			}
+			nd.add(level, next)
 		}
 		// atomically link the node to its predecessor
-		if !preds[0].levels.swapNext(0, unsafe.Pointer(succs[0]), unsafe.Pointer(nd)) {
+		if !preds[0].tower.swapNext(0, unsafe.Pointer(succs[0]), unsafe.Pointer(nd)) {
 			// cas failed, need to start over
 			continue
 		}
@@ -189,14 +225,17 @@ func (sl *SkipList) storeSafe(key uint64, val interface{}) {
 
 	// update the predecessors in the upper levels
 	for nd != nil {
-		var retry bool
-		for level := 1; level < untilLevel; level++ {
+		var (
+			retry bool
+			until = len(preds) % untilLevel
+		)
+		for level := 1; level < until; level++ {
 			pred := preds[level]
 			succ := succs[level]
 			if pred == nil {
 				pred = sl.start
 			}
-			if !pred.levels.swapNext(level, unsafe.Pointer(succ), unsafe.Pointer(nd)) {
+			if !pred.tower.swapNext(level, unsafe.Pointer(succ), unsafe.Pointer(nd)) {
 				retry = true
 				break
 			}
@@ -221,7 +260,7 @@ func (sl *SkipList) delete(key uint64) bool {
 			// obtain a marked pointer to the node, it has the same memory address
 			taggedPtr = (*node)(TagPointer(unsafe.Pointer(nd), marked))
 		)
-		for level := int(atomic.LoadUint64(&sl.topLevel) - 1); level > 0; level-- {
+		for level := len(prevs) - 1; level > 0; level-- {
 			prev := prevs[level]
 			if prev == nil {
 				continue
@@ -230,7 +269,7 @@ func (sl *SkipList) delete(key uint64) bool {
 				continue
 			}
 			// log.Printf("%064b\n", unsafe.Pointer(nd))
-			if !prev.levels.swapNext(level, unsafe.Pointer(nd), unsafe.Pointer(taggedPtr)) {
+			if !prev.tower.swapNext(level, unsafe.Pointer(nd), unsafe.Pointer(taggedPtr)) {
 				retry = true
 				/*fmt.Println("can't mark level", level)
 				  log.Printf("%064b\n", unsafe.Pointer(prev.next(level)))
@@ -240,11 +279,11 @@ func (sl *SkipList) delete(key uint64) bool {
 				  log.Printf("%v\n", nd.getVal().(int))*/
 				break
 			}
-			// log.Printf("%064b\n", prev.levels.next(level))
+			// log.Printf("%064b\n", prev.tower.next(level))
 			// lazily attempt to unlink the node
-			prev.levels.swapNext(level, unsafe.Pointer(taggedPtr), unsafe.Pointer(succs[level]))
+			prev.tower.swapNext(level, unsafe.Pointer(taggedPtr), unsafe.Pointer(succs[level]))
 		}
-		if retry || !prevs[0].levels.swapNext(0, unsafe.Pointer(nd), unsafe.Pointer(taggedPtr)) {
+		if retry || !prevs[0].tower.swapNext(0, unsafe.Pointer(nd), unsafe.Pointer(taggedPtr)) {
 			nd, prevs, succs = sl.findNode(key, true)
 			continue
 		}
@@ -253,74 +292,3 @@ func (sl *SkipList) delete(key uint64) bool {
 	nd = nil
 	return true
 }
-
-func (sl *SkipList) updateTopLevel(level uint64) {
-	for {
-		topLevel := atomic.LoadUint64(&sl.topLevel)
-		if level <= topLevel {
-			break
-		}
-		if atomic.CompareAndSwapUint64(&sl.topLevel, topLevel, level) {
-			break
-		}
-	}
-}
-
-/*func (sl *SkipList) store(key uint64, val interface{}) {
-    var (
-        nd           *node
-        preds, succs [MaxLevels]*node
-    )
-    nd, preds, succs = sl.findNode(key, true)
-
-    if nd != nil {
-        // update
-        nd.updateVal(val)
-        return
-    }
-
-    nd = &node{
-        key: key,
-        val: unsafe.Pointer(&val),
-    }
-
-    untilLevel := randomHeight()
-    sl.updateTopLevel(uint64(untilLevel))
-
-    for level := 0; level < untilLevel; level++ {
-        pred := preds[level]
-        succ := succs[level]
-        if pred == nil {
-            pred = sl.start
-        }
-        nd.add(level, succ)
-        pred.add(level, nd)
-    }
-}*/
-
-/*func (sl *SkipList) Delete(key uint64) bool {
-    nd, path := sl.search(key)
-    if nd == nil {
-        return false
-    }
-    for level := 0; level < len(path)-1; level++ {
-        current := path[level]
-        if current.levels[level] != nd {
-            break
-        }
-        current.levels[level] = nd.levels[level]
-        nd.levels[level] = nil
-    }
-    nd = nil
-    //sl.shrink()
-    return true
-}
-
-func (sl *SkipList) shrink() {
-    for level := sl.topLevel - 1; level >= 0; level-- {
-        if sl.start.tower[level] == nil {
-            sl.topLevel--
-        }
-    }
-}
-*/

@@ -6,10 +6,10 @@ import (
 )
 
 type node struct {
-	val    unsafe.Pointer
-	levels layers
-	key    uint64
-	flags  uint32
+	val   unsafe.Pointer
+	tower *tower
+	key   uint64
+	flags uint32
 }
 
 func (nd *node) getVal() (val any) {
@@ -26,20 +26,20 @@ func (nd *node) swapVal(old, val any) bool {
 }
 
 func (nd *node) next(fromLevel int) (n *node) {
-	n = (*node)(nd.levels.next(fromLevel))
+	n = (*node)(nd.tower.next(fromLevel))
 	if n == nil {
 		return
 	}
 	for isPointerMarked(unsafe.Pointer(n)) && nd != nil {
 		// lazily unlink node from the list at the current level
-		nd.levels.swapNext(fromLevel, unsafe.Pointer(n), unsafe.Pointer(n.next(fromLevel)))
+		nd.tower.swapNext(fromLevel, unsafe.Pointer(n), unsafe.Pointer(n.next(fromLevel)))
 		n = n.next(fromLevel)
 	}
 	return
 }
 
 func (nd *node) add(toLevel int, next *node) {
-	nd.levels.add(toLevel, unsafe.Pointer(next))
+	nd.tower.add(toLevel, unsafe.Pointer(next))
 }
 
 /*func (nd *node) isFullyLinked() bool {
