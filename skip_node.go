@@ -5,55 +5,56 @@ import (
 	"unsafe"
 )
 
-type node struct {
+type Node struct {
 	val   unsafe.Pointer
-	tower *tower
+	tower *Tower
 	key   uint64
-	flags uint32
 }
 
-func (nd *node) getVal() (val any) {
+func (nd *Node) GetVal() (val any) {
 	return *(*any)(atomic.LoadPointer(&nd.val))
 }
 
-func (nd *node) updateVal(val any) bool {
+func (nd *Node) UpdateVal(val any) bool {
 	old := atomic.LoadPointer(&nd.val)
 	return atomic.CompareAndSwapPointer(&nd.val, old, unsafe.Pointer(&val))
 }
 
-func (nd *node) swapVal(old, val any) bool {
+func (nd *Node) SwapVal(old, val any) bool {
 	return atomic.CompareAndSwapPointer(&nd.val, unsafe.Pointer(&old), unsafe.Pointer(&val))
 }
 
-func (nd *node) next(fromLevel int) (n *node) {
-	n = (*node)(nd.tower.next(fromLevel))
-	if n == nil {
-		return
+func (nd *Node) NextFromLevel(lev *Level) *Node {
+	var (
+		next  = (*Node)(lev.NextPtr())
+		_next = next
+	)
+	for next != nil && IsPointerMarked(unsafe.Pointer(next)) {
+		next = (*Node)(next.tower.NextPtr(lev.id))
 	}
-	for isPointerMarked(unsafe.Pointer(n)) && nd != nil {
+	if next != _next {
+		// log.Println("unlinking node")
 		// lazily unlink node from the list at the current level
-		nd.tower.swapNext(fromLevel, unsafe.Pointer(n), unsafe.Pointer(n.next(fromLevel)))
-		n = n.next(fromLevel)
+		nd.tower.SwapNext(lev.id, unsafe.Pointer(_next), unsafe.Pointer(next))
 	}
-	return
+	return next
 }
 
-func (nd *node) add(toLevel int, next *node) {
-	nd.tower.add(toLevel, unsafe.Pointer(next))
+func (nd *Node) Next(forLevel int) *Node {
+	var (
+		next  = (*Node)(nd.tower.NextPtr(forLevel))
+		_next = next
+	)
+	for next != nil && IsPointerMarked(unsafe.Pointer(next)) {
+		next = next.Next(forLevel)
+	}
+	if next != _next {
+		// lazily unlink node from the list at the current level
+		nd.tower.SwapNext(forLevel, unsafe.Pointer(next), unsafe.Pointer(_next))
+	}
+	return next
 }
 
-/*func (nd *node) isFullyLinked() bool {
-	return isFlagSet(&nd.flags, fullyLinked)
+func (nd *Node) Add(toLevel int, next *Node) {
+	nd.tower.AddPtr(toLevel, unsafe.Pointer(next))
 }
-
-func (nd *node) isMarked() bool {
-	return isFlagSet(&nd.flags, marked)
-}
-
-func (nd *node) setFlags(f uint32) {
-	setFlags(&nd.flags, f)
-}
-
-func (nd *node) unsetFlags(f uint32) {
-	unsetFlags(&nd.flags, f)
-}*/

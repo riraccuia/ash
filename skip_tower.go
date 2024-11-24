@@ -1,112 +1,73 @@
 package ash
 
 import (
+	"math"
 	"sync/atomic"
 	"unsafe"
 )
 
-type tower struct {
-	top    *level
-	bottom *level
+const (
+	PValue = 0.5 // p = 1/2
+)
+
+var probabilities [64]uint32
+
+func init() {
+	probability := 1.0
+
+	for level := 0; level < 64; level++ {
+		probabilities[level] = uint32(probability * float64(math.MaxUint32))
+		probability *= PValue
+	}
 }
 
-func NewTower() *tower {
-	bottom := &level{
+func randomHeight(maxLevel int) int {
+	seed := fastrand()
+
+	height := 1
+	for height < maxLevel && seed <= probabilities[height] {
+		height++
+	}
+
+	return height
+}
+
+type Tower struct {
+	top    *Level
+	bottom *Level
+}
+
+type Level struct {
+	_next unsafe.Pointer
+	_up   *Level
+	_down *Level
+	id    int
+}
+
+func NewTower() *Tower {
+	bottom := &Level{
 		_next: nil,
 		id:    0,
 	}
-	return &tower{
+	return &Tower{
 		top:    bottom,
 		bottom: bottom,
 	}
 }
 
-type level struct {
-	_next unsafe.Pointer
-	_up   *level
-	_down *level
-	id    int
-}
-
-func (l *level) up() *level {
+func (l *Level) Up() *Level {
 	return l._up
 }
 
-func (l *level) down() *level {
+func (l *Level) Down() *Level {
 	return l._down
 }
 
-func (l *level) next() unsafe.Pointer {
+func (l *Level) NextPtr() unsafe.Pointer {
 	return atomic.LoadPointer(&l._next)
 }
 
-func (l *tower) getLevel(level int) *level {
-	lev := l.bottom
-	for lev != nil {
-		if lev.id == level {
-			return lev
-		}
-		lev = lev.up()
-	}
-	return nil
-}
-
-func (l *tower) next(fromLevel int) unsafe.Pointer {
-	nlev := l.bottom
-	for nlev != nil {
-		if nlev.id == fromLevel {
-			return nlev.next()
-		}
-		nlev = nlev.up()
-	}
-	return nil
-}
-
-func (l *tower) add(toLevel int, p unsafe.Pointer) {
-	if l.bottom.id == toLevel {
-		l.bottom._next = p
-		return
-	}
-
-	if toLevel > l.top.id {
-		newLev := &level{
-			_next: p,
-			_down: l.top,
-			id:    toLevel,
-		}
-		l.top._up = newLev
-		l.top = newLev
-		return
-	}
-
-	/*var (
-	plev *level
-			nlev = l.bottom
-		)
-
-		for nlev != nil {
-			if nlev.id == toLevel {
-				nlev._next = p
-				return
-			}
-			if toLevel > nlev.id {
-				plev = nlev
-				nlev = nlev.up()
-				continue
-			}
-			newLev := &level{
-				_next: p,
-				_up:   nlev,
-				_down: plev,
-				id:    toLevel,
-			}
-			plev._up = newLev
-			nlev._down = newLev
-			return
-		}*/
-}
-
-func (l *tower) swapNext(level int, old, new unsafe.Pointer) (swapped bool) {
+func (l *Tower) SwapNext(level int, old, new unsafe.Pointer) (swapped bool) {
 	if level > l.top.id {
 		panic("unexpected level")
 	}
@@ -115,12 +76,12 @@ func (l *tower) swapNext(level int, old, new unsafe.Pointer) (swapped bool) {
 		if nlev.id == level {
 			return atomic.CompareAndSwapPointer(&nlev._next, old, new)
 		}
-		nlev = nlev.up()
+		nlev = nlev.Up()
 	}
 	return
 }
 
-func (l *tower) updateNext(level int, new unsafe.Pointer) {
+func (l *Tower) UpdateNext(level int, new unsafe.Pointer) {
 	if level > l.top.id {
 		panic("unexpected level")
 	}
@@ -130,6 +91,58 @@ func (l *tower) updateNext(level int, new unsafe.Pointer) {
 			atomic.StorePointer(&nlev._next, new)
 			return
 		}
-		nlev = nlev.up()
+		nlev = nlev.Up()
+	}
+}
+
+func (l *Tower) GetLevel(level int) *Level {
+	lev := l.bottom
+	for lev != nil {
+		if lev.id == level {
+			return lev
+		}
+		lev = lev.Up()
+	}
+	return nil
+}
+
+func (l *Tower) NextPtr(forLevel int) unsafe.Pointer {
+	nlev := l.bottom
+	for nlev != nil {
+		if nlev.id == forLevel {
+			return nlev.NextPtr()
+		}
+		nlev = nlev.Up()
+	}
+	return nil
+}
+
+func (l *Tower) AddPtr(level int, p unsafe.Pointer) {
+	if l.bottom.id == level {
+		l.bottom._next = p
+		return
+	}
+
+	for level > l.top.id {
+		id := l.top.id + 1
+		newLev := &Level{
+			_next: nil,
+			_down: l.top,
+			id:    id,
+		}
+		if id == level {
+			newLev._next = p
+		}
+		l.top._up = newLev
+		l.top = newLev
+		return
+	}
+
+	nlev := l.bottom
+	for nlev != nil {
+		if nlev.id == level {
+			nlev._next = p
+		}
+		nlev = nlev.Up()
 	}
 }

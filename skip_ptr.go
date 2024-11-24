@@ -1,6 +1,8 @@
 package ash
 
-import "unsafe"
+import (
+	"unsafe"
+)
 
 // TagPointer applies the flag to the higher 8 bits of the pointer address
 //
@@ -14,7 +16,7 @@ func TagPointer(ptr unsafe.Pointer, flag int) unsafe.Pointer {
 	return unsafe.Pointer(uintptr(ptr) | uintptr(flag)<<56)
 }
 
-func isPointerMarked(ptr unsafe.Pointer) bool {
+func IsPointerMarked(ptr unsafe.Pointer) bool {
 	return ((uintptr(ptr) >> 56) & marked) != 0
 }
 

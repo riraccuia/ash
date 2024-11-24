@@ -1,189 +1,59 @@
 package ash
 
 import (
-	//"errors"
-
-	"math"
 	"sync/atomic"
 	"unsafe"
 )
 
-const (
-	PValue = 0.5 // p = 1/2
-)
-
-var probabilities [64]uint32
-
-func init() {
-	probability := 1.0
-
-	for level := 0; level < 64; level++ {
-		probabilities[level] = uint32(probability * float64(math.MaxUint32))
-		probability *= PValue
-	}
-}
-
-type SkipList struct {
-	start    *node
-	topLevel uint64
-	maxLevel uint64
-}
-
-func NewSkipList(maxLevel int) *SkipList {
-	if maxLevel < 1 || maxLevel > 64 {
-		panic("maxLevel must be between 1 and 64")
-	}
-	sl := &SkipList{
-		topLevel: 1,
-		maxLevel: uint64(maxLevel),
-	}
-	sl.start = &node{
-		key:   0,
-		tower: NewTower(),
-	}
-	for i := 0; i < maxLevel; i++ {
-		sl.start.tower.add(i, nil)
-	}
-	return sl
-}
-
-func randomHeight(maxLevel int) int {
-	seed := fastrand()
-
-	height := 1
-	for height < maxLevel && seed <= probabilities[height] {
-		height++
-	}
-
-	return height
-}
-
-func (sl *SkipList) updateTopLevel(level uint64) {
-	if level == sl.maxLevel {
-		return
-	}
-	for {
-		topLevel := atomic.LoadUint64(&sl.topLevel)
-		if level <= topLevel {
-			break
-		}
-		if atomic.CompareAndSwapUint64(&sl.topLevel, topLevel, level) {
-			break
-		}
-	}
-}
-
-func (sl *SkipList) Clear() {
-	for level := int(atomic.LoadUint64(&sl.topLevel) - 1); level >= 0; level-- {
-		sl.start.tower.updateNext(level, nil)
-	}
-}
-
-// CompareAndDelete deletes the entry for key if its value is equal to old.
-// The old value must be of a comparable type.
-//
-// If there is no current value for key in the map, CompareAndDelete
-// returns false (even if the old value is the nil interface value).
-func (sl *SkipList) CompareAndDelete(key, old any) (deleted bool) {
-	keyHash := HashFunc(key)
-	nd := sl.search(keyHash)
-	if nd == nil {
-		return
-	}
-	ok := nd.swapVal(old, nil)
-	if !ok {
-		return
-	}
-	sl.Delete(key)
-	deleted = true
-	return
-}
-
-// CompareAndSwap swaps the old and new values for key
-// if the value stored in the map is equal to old.
-// The old value must be of a comparable type.
-func (sl *SkipList) CompareAndSwap(key, old, new any) (swapped bool) {
-	keyHash := HashFunc(key)
-	nd := sl.search(keyHash)
-	if nd == nil {
-		return
-	}
-	return nd.swapVal(old, new)
-}
-
-func (sl *SkipList) Load(key any) (value any, ok bool) {
-	keyHash := HashFunc(key)
-	nd := sl.search(keyHash)
-	if nd == nil {
-		return nil, false
-	}
-	val := nd.getVal()
-	return val, ok
-}
-
-func (sl *SkipList) Store(key any, item interface{}, lifetime int64) {
-	hKey := HashFunc(key)
-	sl.storeSafe(hKey, item)
-}
-
-func (sl *SkipList) Range(f func(key, value any) bool) {
-	// iterate through items at the base level
-	for next := sl.start.next(0); next != nil; next = next.next(0) {
-		if !f(next.key, next.getVal()) {
-			return
-		}
-	}
-}
-
-func (sl *SkipList) Delete(key any) {
-	sl.delete(HashFunc(key))
-}
-
-func (sl *SkipList) Len() (l int) {
-	next := sl.start.next(0)
-	for next != nil {
-		l++
-		next = next.next(0)
-	}
-	return
-}
-
-func (sl *SkipList) search(key uint64) (nd *node) {
+func (sl *Map) search(key uint64) (nd *Node) {
 	nd, _, _ = sl.findNode(key, false)
 	return
 }
 
-func (sl *SkipList) findNode(key uint64, full bool) (nd *node, pred, succ []*node) {
+func (sl *Map) findNode(key uint64, full bool) (nd *Node, preds, succs []*Node) {
 	var (
-		lev      *level
+		lev      *Level
 		prev     = sl.start
 		topLevel = int(atomic.LoadUint64(&sl.topLevel))
 	)
-	pred, succ = make([]*node, topLevel), make([]*node, topLevel)
-	for lev = prev.tower.getLevel(topLevel - 1); lev != nil; lev = lev.down() {
-		next := (*node)(lev.next())
+
+	preds, succs = make([]*Node, topLevel), make([]*Node, topLevel)
+
+	for lev = prev.tower.GetLevel(topLevel - 1); lev != nil; lev = lev.Down() {
+		next := prev.NextFromLevel(lev)
+
+		// walk through the list at the current level
 		for next != nil && key > next.key {
 			prev = next
 			lev = prev.tower.top
-			next = (*node)(lev.next())
+			next = prev.NextFromLevel(lev)
 		}
-		pred[lev.id] = prev
-		succ[lev.id] = next
-		if next != nil && key == next.key {
-			nd = next
-			succ[lev.id] = (*node)(next.tower.top.next())
-			if !full {
-				return
-			}
+
+		preds[lev.id], succs[lev.id] = prev, next
+
+		if next == nil || key != next.key {
+			continue
 		}
+
+		// log.Println("found full=", full, "lev", lev.id)
+		nd = next
+
+		if full {
+			succs[lev.id] = nd.Next(lev.id)
+			continue
+		}
+
+		succs[lev.id] = nd.NextFromLevel(nd.tower.top)
+		// log.Println("found lev", lev.id)
+		return
 	}
 	return
 }
 
-func (sl *SkipList) storeSafe(key uint64, val interface{}) {
+func (sl *Map) storeSafe(key uint64, val any) {
 	var (
-		nd           *node
-		preds, succs []*node
+		nd           *Node
+		preds, succs []*Node
 		untilLevel   int
 	)
 
@@ -191,13 +61,14 @@ func (sl *SkipList) storeSafe(key uint64, val interface{}) {
 	for {
 		nd, preds, succs = sl.findNode(key, true)
 		if nd != nil {
-			if !nd.updateVal(val) {
+			if !nd.UpdateVal(val) {
 				// cas failed, start over
 				continue
 			}
 			return
 		}
-		nd = &node{
+
+		nd = &Node{
 			key:   key,
 			val:   unsafe.Pointer(&val),
 			tower: NewTower(),
@@ -208,14 +79,14 @@ func (sl *SkipList) storeSafe(key uint64, val interface{}) {
 
 		// link all the successors to the new node
 		for level := 0; level < untilLevel; level++ {
-			var next *node
 			if level < len(succs) {
-				next = succs[level]
+				nd.Add(level, succs[level])
+				continue
 			}
-			nd.add(level, next)
+			nd.Add(level, nil)
 		}
-		// atomically link the node to its predecessor
-		if !preds[0].tower.swapNext(0, unsafe.Pointer(succs[0]), unsafe.Pointer(nd)) {
+		// atomically link the node to its predecessor in the bottom level
+		if !preds[0].tower.SwapNext(0, unsafe.Pointer(succs[0]), unsafe.Pointer(nd)) {
 			// cas failed, need to start over
 			continue
 		}
@@ -225,17 +96,16 @@ func (sl *SkipList) storeSafe(key uint64, val interface{}) {
 
 	// update the predecessors in the upper levels
 	for nd != nil {
-		var (
-			retry bool
-			until = len(preds) % untilLevel
-		)
-		for level := 1; level < until; level++ {
-			pred := preds[level]
-			succ := succs[level]
+		var retry bool
+		for level := 1; level < untilLevel; level++ {
+			var pred, succ *Node
+			if level < len(succs) {
+				pred, succ = preds[level], succs[level]
+			}
 			if pred == nil {
 				pred = sl.start
 			}
-			if !pred.tower.swapNext(level, unsafe.Pointer(succ), unsafe.Pointer(nd)) {
+			if !pred.tower.SwapNext(level, unsafe.Pointer(succ), unsafe.Pointer(nd)) {
 				retry = true
 				break
 			}
@@ -249,46 +119,51 @@ func (sl *SkipList) storeSafe(key uint64, val interface{}) {
 	}
 }
 
-func (sl *SkipList) delete(key uint64) bool {
-	nd, prevs, succs := sl.findNode(key, true)
+func (sl *Map) delete(key uint64) bool {
+	nd, preds, _ := sl.findNode(key, true)
 	for nd != nil {
-		if prevs[0].next(0) != nd {
+		if preds[0].Next(0) != nd {
 			return true
 		}
 		var (
 			retry bool
 			// obtain a marked pointer to the node, it has the same memory address
-			taggedPtr = (*node)(TagPointer(unsafe.Pointer(nd), marked))
+			taggedPtr = (*Node)(TagPointer(unsafe.Pointer(nd), marked))
 		)
-		for level := len(prevs) - 1; level > 0; level-- {
-			prev := prevs[level]
-			if prev == nil {
+		for level := len(preds) - 1; level > 0; level-- {
+			prev := preds[level]
+			if prev == nil || prev.Next(level) != nd {
 				continue
 			}
-			if prev.next(level) != nd {
-				continue
-			}
-			// log.Printf("%064b\n", unsafe.Pointer(nd))
-			if !prev.tower.swapNext(level, unsafe.Pointer(nd), unsafe.Pointer(taggedPtr)) {
+			if !prev.tower.SwapNext(level, unsafe.Pointer(nd), unsafe.Pointer(taggedPtr)) {
 				retry = true
-				/*fmt.Println("can't mark level", level)
-				  log.Printf("%064b\n", unsafe.Pointer(prev.next(level)))
-				  log.Printf("%064b\n", unsafe.Pointer(nd))
-				  log.Printf("%064b\n", unsafe.Pointer(taggedPtr))
-				  log.Printf("%v\n", prev.next(level).getVal().(int))
-				  log.Printf("%v\n", nd.getVal().(int))*/
 				break
 			}
-			// log.Printf("%064b\n", prev.tower.next(level))
 			// lazily attempt to unlink the node
-			prev.tower.swapNext(level, unsafe.Pointer(taggedPtr), unsafe.Pointer(succs[level]))
+			// prev.tower.SwapNext(level, unsafe.Pointer(taggedPtr), unsafe.Pointer(succs[level]))
 		}
-		if retry || !prevs[0].tower.swapNext(0, unsafe.Pointer(nd), unsafe.Pointer(taggedPtr)) {
-			nd, prevs, succs = sl.findNode(key, true)
+		if retry || !preds[0].tower.SwapNext(0, unsafe.Pointer(nd), unsafe.Pointer(taggedPtr)) {
+			nd, preds, _ = sl.findNode(key, true)
 			continue
 		}
+		// lazily attempt to unlink the bottom node
+		// preds[0].tower.SwapNext(0, unsafe.Pointer(taggedPtr), unsafe.Pointer(succs[0]))
 		break
 	}
-	nd = nil
 	return true
+}
+
+func (sl *Map) updateTopLevel(level uint64) {
+	if level == sl.maxLevel {
+		return
+	}
+	for {
+		topLevel := atomic.LoadUint64(&sl.topLevel)
+		if level <= topLevel {
+			break
+		}
+		if atomic.CompareAndSwapUint64(&sl.topLevel, topLevel, level) {
+			break
+		}
+	}
 }

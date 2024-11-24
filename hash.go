@@ -1,6 +1,8 @@
 package ash
 
 import (
+	"fmt"
+
 	xxhash "github.com/cespare/xxhash/v2"
 )
 
@@ -9,16 +11,17 @@ func HashFunc(key any) uint64 {
 		return 0
 	}
 
-	var _key []byte
 	switch v := key.(type) {
 	case []byte:
-		_key = v
+		return xxhash.Sum64(v)
 	case string:
-		_key = []byte(v)
-	case int8, uint8, int16, uint16, int32, uint32, int64, uint64, float32, float64:
-		_key = NumericToBytesUnsafe(v)
+		return xxhash.Sum64String(v)
+	case uint64:
+		return v
+	case int:
+		return uint64(v)
 	default:
-		panic("invalid key type")
+		msg := fmt.Sprintf("invalid key type %T", key)
+		panic(msg)
 	}
-	return xxhash.Sum64(_key)
 }

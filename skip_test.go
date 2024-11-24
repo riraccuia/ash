@@ -2,37 +2,46 @@ package ash
 
 import (
 	"fmt"
+	"math/rand"
 	"runtime"
 	"testing"
 	"time"
 	"unsafe"
 )
 
+func TestAsh_delete(t *testing.T) {
+	sl := NewMap(32)
+	sl.storeSafe(9, "test string")
+	// sl.storeSafe(19, "test string 2")
+	sl.delete(9)
+	n := sl.search(9)
+	if n != nil {
+		t.Fatal("should not be found")
+	}
+}
+
 func TestSkipList_store(t *testing.T) {
-	sl := NewSkipList(16)
-	sl.storeSafe(3, 9876)
-	sl.storeSafe(5, 9877)
-	sl.storeSafe(345, 9878)
-	sl.storeSafe(77, 9879)
-	sl.storeSafe(342, 9880)
+	sl := NewMap(16)
+	sl.Store(0, 9876)
+	sl.Store(5, 9877)
+	sl.Store(345, 9878)
+	sl.Store(1000, 9879)
+	sl.Store(342, 9880)
+	sl.Delete(342)
 	t.Log("Ranging")
 	sl.Range(func(key, value any) bool {
-		t.Log(value.(int))
+		t.Log(key)
 		return true
 	})
 	t.Logf("Length: %v", sl.Len())
-	nd := sl.search(77)
+	nd, _ := sl.Load(5)
 	if nd == nil {
 		t.Fatalf("should be found")
 	}
-	t.Log(nd.getVal().(int))
-	sl.delete(77)
-	sl.delete(77)
-	nd = sl.search(77)
-	if nd != nil {
-		t.Fatalf("should not be found")
-	}
-	nd = sl.search(77)
+	t.Log("Value of 5 is: ", nd.(int))
+	sl.Delete(5)
+	// sl.delete(5)
+	nd, _ = sl.Load(5)
 	if nd != nil {
 		t.Fatalf("should not be found")
 	}
@@ -101,12 +110,12 @@ func TestPointer(t *testing.T) {
 	d = (*uint64)(TagPointer(unsafe.Pointer(b), marked))
 	t.Logf("%064b", d)
 	t.Log(*d)
-	t.Logf("Marked: %v", isPointerMarked(unsafe.Pointer(d)))
+	t.Logf("Marked: %v", IsPointerMarked(unsafe.Pointer(d)))
 
 	var arr []*uint64 = []*uint64{&a, (*uint64)(TagPointer(unsafe.Pointer(&a), marked))}
 
 	for i, v := range arr {
-		t.Logf("Pointer marked for [%v]: %v", i, isPointerMarked(unsafe.Pointer(v)))
+		t.Logf("Pointer marked for [%v]: %v", i, IsPointerMarked(unsafe.Pointer(v)))
 	}
 
 	t.Logf("%064b", marked<<56)
@@ -115,17 +124,13 @@ func TestPointer(t *testing.T) {
 const markTest uint64 = 0x8000000000000000
 
 func TestRange(t *testing.T) {
-	sl := &SkipList{
-		start: &node{
-			key: 0,
-		},
-		topLevel: 3,
-	}
+	sl := NewMap(16)
 	for i := 0; i < 3; i++ {
 		Bar(sl)
 		time.Sleep(time.Second)
 		runtime.GC()
 	}
+	runtime.GC()
 	time.Sleep(20 * time.Second)
 }
 
@@ -133,14 +138,14 @@ type tst struct {
 	n int
 }
 
-func Bar(sl *SkipList) {
+func Bar(sl *Map) {
 	a := &tst{
 		n: 900,
 	}
 	runtime.SetFinalizer(a, func(f *tst) {
 		fmt.Println("freeing memory")
 	})
-	sl.storeSafe(uint64(RandInt()), a)
+	sl.Store(uint64(rand.Intn(10000)), a)
 	sl.Clear()
 	a = nil
 }
