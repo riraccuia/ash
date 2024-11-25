@@ -119,12 +119,14 @@ func (sl *Map) storeSafe(key uint64, val any) {
 	}
 }
 
-func (sl *Map) delete(key uint64) bool {
-	nd, preds, _ := sl.findNode(key, true)
+func (sl *Map) delete(key uint64) (nd *Node, deleted bool) {
+	var preds []*Node
+	nd, preds, _ = sl.findNode(key, true)
 	for nd != nil {
-		if preds[0].Next(0) != nd {
-			return true
-		}
+		// if preds[0].Next(0) != nd {
+		// 	deleted = true
+		// 	return
+		// }
 		var (
 			retry bool
 			// obtain a marked pointer to the node, it has the same memory address
@@ -150,7 +152,8 @@ func (sl *Map) delete(key uint64) bool {
 		// preds[0].tower.SwapNext(0, unsafe.Pointer(taggedPtr), unsafe.Pointer(succs[0]))
 		break
 	}
-	return true
+	deleted = nd != nil
+	return
 }
 
 func (sl *Map) updateTopLevel(level uint64) {
