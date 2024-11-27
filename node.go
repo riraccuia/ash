@@ -55,6 +55,6 @@ func (nd *Node) Next(forLevel int) *Node {
 	return next
 }
 
-func (nd *Node) Add(toLevel int, next *Node) {
+func (nd *Node) AddNext(toLevel int, next *Node) {
 	nd.tower.AddPtr(toLevel, unsafe.Pointer(next))
 }

@@ -1,47 +1,13 @@
 package ash
 
 import (
-	"math"
 	"sync/atomic"
 	"unsafe"
 )
 
-const (
-	PValue = 0.5 // p = 1/2
-)
-
-var probabilities [64]uint32
-
-func init() {
-	probability := 1.0
-
-	for level := 0; level < 64; level++ {
-		probabilities[level] = uint32(probability * float64(math.MaxUint32))
-		probability *= PValue
-	}
-}
-
-func randomHeight(maxLevel int) int {
-	seed := fastrand()
-
-	height := 1
-	for height < maxLevel && seed <= probabilities[height] {
-		height++
-	}
-
-	return height
-}
-
 type Tower struct {
 	top    *Level
 	bottom *Level
-}
-
-type Level struct {
-	_next unsafe.Pointer
-	_up   *Level
-	_down *Level
-	id    int
 }
 
 func NewTower() *Tower {
@@ -53,18 +19,6 @@ func NewTower() *Tower {
 		top:    bottom,
 		bottom: bottom,
 	}
-}
-
-func (l *Level) Up() *Level {
-	return l._up
-}
-
-func (l *Level) Down() *Level {
-	return l._down
-}
-
-func (l *Level) NextPtr() unsafe.Pointer {
-	return atomic.LoadPointer(&l._next)
 }
 
 func (l *Tower) SwapNext(level int, old, new unsafe.Pointer) (swapped bool) {

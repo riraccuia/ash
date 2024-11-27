@@ -5,12 +5,40 @@ import (
 	"unsafe"
 )
 
-func (sl *Map) search(key uint64) (nd *Node) {
-	nd, _, _ = sl.findNode(key, false)
+// SkipList is a lock-free, concurrent safe skip list implementation.
+type SkipList struct {
+	start    *Node
+	topLevel uint64
+	maxLevel uint64
+}
+
+// NewSkipList returns a lock-free, concurrent safe skip list with its maxlevel set to the given height.
+// For p = 1/2, using maxlevel=16 should be appropriate for storing up to 2^16 elements.
+// The p value is controlled by the `PValue` global and defaults to 1/2. Maxlevel is a number between 1 and 64.
+func NewSkipList(maxLevel int) *SkipList {
+	if maxLevel < 1 || maxLevel > 64 {
+		panic("maxLevel must be between 1 and 64")
+	}
+	sl := &SkipList{
+		topLevel: 1,
+		maxLevel: uint64(maxLevel),
+	}
+	sl.start = &Node{
+		key:   0,
+		tower: NewTower(),
+	}
+	for i := 0; i < maxLevel; i++ {
+		sl.start.tower.AddPtr(i, nil)
+	}
+	return sl
+}
+
+func (sl *SkipList) Search(key uint64) (nd *Node) {
+	nd, _, _ = sl.FindNode(key, false)
 	return
 }
 
-func (sl *Map) findNode(key uint64, full bool) (nd *Node, preds, succs []*Node) {
+func (sl *SkipList) FindNode(key uint64, full bool) (nd *Node, preds, succs []*Node) {
 	var (
 		lev      *Level
 		prev     = sl.start
@@ -50,7 +78,7 @@ func (sl *Map) findNode(key uint64, full bool) (nd *Node, preds, succs []*Node) 
 	return
 }
 
-func (sl *Map) storeSafe(key uint64, val any) {
+func (sl *SkipList) Store(key uint64, val any) {
 	var (
 		nd           *Node
 		preds, succs []*Node
@@ -59,7 +87,7 @@ func (sl *Map) storeSafe(key uint64, val any) {
 
 	// start from the bottom level
 	for {
-		nd, preds, succs = sl.findNode(key, true)
+		nd, preds, succs = sl.FindNode(key, true)
 		if nd != nil {
 			if !nd.UpdateVal(val) {
 				// cas failed, start over
@@ -74,16 +102,16 @@ func (sl *Map) storeSafe(key uint64, val any) {
 			tower: NewTower(),
 		}
 
-		untilLevel = randomHeight(int(sl.maxLevel))
+		untilLevel = RandomHeightFunc(int(sl.maxLevel))
 		sl.updateTopLevel(uint64(untilLevel))
 
 		// link all the successors to the new node
 		for level := 0; level < untilLevel; level++ {
 			if level < len(succs) {
-				nd.Add(level, succs[level])
+				nd.AddNext(level, succs[level])
 				continue
 			}
-			nd.Add(level, nil)
+			nd.AddNext(level, nil)
 		}
 		// atomically link the node to its predecessor in the bottom level
 		if !preds[0].tower.SwapNext(0, unsafe.Pointer(succs[0]), unsafe.Pointer(nd)) {
@@ -112,16 +140,16 @@ func (sl *Map) storeSafe(key uint64, val any) {
 		}
 		if retry {
 			// find up to date predecessors
-			nd, preds, succs = sl.findNode(key, true)
+			nd, preds, succs = sl.FindNode(key, true)
 			continue
 		}
 		break
 	}
 }
 
-func (sl *Map) delete(key uint64) (nd *Node, deleted bool) {
+func (sl *SkipList) Delete(key uint64) (nd *Node, deleted bool) {
 	var preds []*Node
-	nd, preds, _ = sl.findNode(key, true)
+	nd, preds, _ = sl.FindNode(key, true)
 	for nd != nil {
 		// if preds[0].Next(0) != nd {
 		// 	deleted = true
@@ -145,7 +173,7 @@ func (sl *Map) delete(key uint64) (nd *Node, deleted bool) {
 			// prev.tower.SwapNext(level, unsafe.Pointer(taggedPtr), unsafe.Pointer(succs[level]))
 		}
 		if retry || !preds[0].tower.SwapNext(0, unsafe.Pointer(nd), unsafe.Pointer(taggedPtr)) {
-			nd, preds, _ = sl.findNode(key, true)
+			nd, preds, _ = sl.FindNode(key, true)
 			continue
 		}
 		// lazily attempt to unlink the bottom node
@@ -156,17 +184,21 @@ func (sl *Map) delete(key uint64) (nd *Node, deleted bool) {
 	return
 }
 
-func (sl *Map) updateTopLevel(level uint64) {
-	if level == sl.maxLevel {
+func (sl *SkipList) updateTopLevel(level uint64) {
+	switch {
+	case level == sl.maxLevel:
 		return
-	}
-	for {
-		topLevel := atomic.LoadUint64(&sl.topLevel)
-		if level <= topLevel {
-			break
+	case level < sl.maxLevel:
+		for {
+			topLevel := atomic.LoadUint64(&sl.topLevel)
+			if level <= topLevel {
+				break
+			}
+			if atomic.CompareAndSwapUint64(&sl.topLevel, topLevel, level) {
+				break
+			}
 		}
-		if atomic.CompareAndSwapUint64(&sl.topLevel, topLevel, level) {
-			break
-		}
+	default:
+		panic("unexpected height")
 	}
 }
