@@ -42,6 +42,26 @@ func main() {
 }
 ```
 
+
+## Pointer Tagging
+
+Consider the below representation of a pointer in modern architectures:
+
+```ascii
+  63              48  47                                                3     0
+ +-+---------------+---+------------------------------------------------+-----+-+
+ | 00000000 00000000 | -------- -------- -------- -------- -------- ----- | 000 |
+ +------------------------------------------------------------------------------+
+High                 |                                                    |    Low
+ |                   +--> 3-47 (48 bits) Memory Address (pointer)         |                      
+ +--> 48-63 (16 bits) Reserved                                            |
+                                                0-2 (3 bits) Alignment <--+
+```
+Armed with this knowledge, we know that memory address (pointer) representations only use the lower 48 bits of a uint64, which gives us some options to improve logical deletion of nodes from the tree (markable reference).
+This package currently encodes a deletion flag (mark) in the lower 4 bits of the top byte (bits 56-59).
+Note that once marked, the pointer becomes unusable, and the object will be collected by GC, but that's what we want.
+
+
 ## Contributing
 
 Contributions are encouraged. Issues and pull requests can be submitted through the [GitHub repository](https://github.com/riraccuia/ash).
