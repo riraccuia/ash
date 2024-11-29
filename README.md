@@ -4,9 +4,10 @@ Ash is a concurrent, lock-free **A**tomic **S**kiplist **H**ash map. It is inten
 
 ## Inspiration
 
-Through my years of experience writing go code professionally, built-in `map` and `sync.Map` are certainly among the data structures that I have used the most, and not without some level of frustration. Although `sync.Map` was a great addition to the standard library, it is not ideal in every scenario, in fact more often than not you just might be better off guarding a map's reads and writes using synchronization primitives like `Mutex` and/or `RWMutex` or some combination of both.
-With caches and network/priority queues being an important part of the codebases that I maintain at my company, I love learning new ways to squeeze a little performance.
-YunHao Zhang's talk<sup>[1]</sup> at Gophercon 2024 in Chicago was an inspiring introduction to the **skip list** data structure, which surprisingly enough is not implemented in any of the go standard lib.
+Through my years of experience writing go code professionally, built-in `map` and `sync.Map` are certainly among the data structures that I have used the most, and not without some level of frustration.  
+Although `sync.Map` was a great addition to the standard library, it is not ideal in every scenario: more often than not you just might be better off guarding a map's reads and writes using synchronization primitives like `Mutex` and/or `RWMutex` or some combination of both.  
+With caches and network/priority queues being an important part of the codebases that I maintain at my company, I love learning new ways to squeeze a little performance.  
+YunHao Zhang's talk<sup>[1]</sup> at Gophercon 2024 in Chicago was an inspiring introduction to the **skip list** data structure, which surprisingly enough is not implemented in any of the go standard lib.  
 This library explores a lock-free implementation of the skip list as a way for me to both intimately understand it and get more hands-on experience with atomic primitives, as well as become a base for some future work.
 See the [References](https://github.com/riraccuia/ash?tab=readme-ov-file#pointer-tagging) section for the list of papers that inspired the implementation.
 
