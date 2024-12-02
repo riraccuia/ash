@@ -21,7 +21,6 @@ func HashFunc(key any) uint64 {
 	case int:
 		return uint64(v)
 	default:
-		msg := fmt.Sprintf("invalid key type %T", key)
-		panic(msg)
+		panic(fmt.Sprintf("invalid key type %T", key))
 	}
 }

@@ -7,7 +7,7 @@ import (
 
 type Node struct {
 	val   unsafe.Pointer
-	tower *Tower
+	tower Tower
 	key   uint64
 }
 
@@ -24,35 +24,17 @@ func (nd *Node) SwapVal(old, val any) bool {
 	return atomic.CompareAndSwapPointer(&nd.val, unsafe.Pointer(&old), unsafe.Pointer(&val))
 }
 
-func (nd *Node) NextFromLevel(lev *Level) *Node {
-	var (
-		next  = (*Node)(lev.NextPtr())
-		_next = next
-	)
-	for next != nil && IsPointerMarked(unsafe.Pointer(next)) {
-		next = (*Node)(next.tower.NextPtr(lev.id))
-	}
-	if next != _next {
-		// log.Println("unlinking node")
-		// lazily unlink node from the list at the current level
-		nd.tower.SwapNext(lev.id, unsafe.Pointer(_next), unsafe.Pointer(next))
-	}
-	return next
-}
-
 func (nd *Node) Next(forLevel int) *Node {
-	var (
-		next  = (*Node)(nd.tower.NextPtr(forLevel))
-		_next = next
-	)
-	for next != nil && IsPointerMarked(unsafe.Pointer(next)) {
-		next = next.Next(forLevel)
+	next := nd.tower.NextPtr(forLevel)
+	// _next := next
+	for next != nil && IsPointerMarked(next) {
+		// log.Printf("lev %v skipping marked node (2): %#v", forLevel, (*Node)(PointerFromTagPointer(next)).GetVal())
+		next = (*Node)(PointerFromTagPointer(next)).tower.NextPtr(forLevel)
 	}
-	if next != _next {
-		// lazily unlink node from the list at the current level
-		nd.tower.SwapNext(forLevel, unsafe.Pointer(next), unsafe.Pointer(_next))
-	}
-	return next
+	// if next != _next {
+	// 	nd.tower.SwapNext(forLevel, _next, next)
+	// }
+	return (*Node)(next)
 }
 
 func (nd *Node) AddNext(toLevel int, next *Node) {
