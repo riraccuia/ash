@@ -61,6 +61,9 @@ func (l *Tower) GetLevel(level int) *Level {
 }
 
 func (l *Tower) NextPtr(forLevel int) unsafe.Pointer {
+	if forLevel > l.top.id {
+		return nil
+	}
 	nlev := l.bottom
 	for nlev != nil {
 		if nlev.id == forLevel {

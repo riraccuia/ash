@@ -16,6 +16,10 @@ func TagPointer(ptr unsafe.Pointer, flag int) unsafe.Pointer {
 	return unsafe.Pointer(uintptr(ptr) | uintptr(flag)<<56)
 }
 
+func PointerFromTagPointer(tp unsafe.Pointer) unsafe.Pointer {
+	return unsafe.Pointer(uintptr(uintptr(tp) ^ (uintptr(tp) & (0xff << 56))))
+}
+
 func IsPointerMarked(ptr unsafe.Pointer) bool {
 	return ((uintptr(ptr) >> 56) & marked) != 0
 }

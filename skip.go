@@ -33,11 +33,16 @@ func NewSkipList(maxLevel int) *SkipList {
 	return sl
 }
 
+// Search calls FindNode() with the 'full' parameter set to false
+// Returns the node, if found, or nil.
 func (sl *SkipList) Search(key uint64) (nd *Node) {
 	nd, _, _ = sl.FindNode(key, false)
 	return
 }
 
+// FindNode performs a search from the top level to the bottom level to find the target element.
+// Nodes with a reference mark will be ignored. The 'full' parameter, when set to false, makes
+// FindNode stop and return when the element is found, without reaching to the bottom of the list.
 func (sl *SkipList) FindNode(key uint64, full bool) (nd *Node, preds, succs []*Node) {
 	var (
 		lev      *Level
@@ -78,6 +83,11 @@ func (sl *SkipList) FindNode(key uint64, full bool) (nd *Node, preds, succs []*N
 	return
 }
 
+// Store adds the element to the list. If the element exists, its value is updated.
+// Otherwise it finds its predecessors and successors in all levels, creates the new node
+// with all pointers pointing to the potential successors. It will first try to add the
+// new node using CAS to the bottom level, then it will modify the pointers in all the
+// previous nodes to point to the current node.
 func (sl *SkipList) Store(key uint64, val any) {
 	var (
 		nd           *Node
@@ -147,6 +157,10 @@ func (sl *SkipList) Store(key uint64, val any) {
 	}
 }
 
+// Delete removes the element from the list.
+// It will start to mark from the top level until one level above the bottom level.
+// After all upper level references are marked, it marks the bottom level to indicate
+// logical deletion from the list.
 func (sl *SkipList) Delete(key uint64) (nd *Node, deleted bool) {
 	var preds []*Node
 	nd, preds, _ = sl.FindNode(key, true)

@@ -5,7 +5,7 @@ import (
 )
 
 // Map is a drop-in replacement for sync.Map backed by skip list.
-// Use &ash.Map{*SkipList} or &ash.Map{}.From(ash.NewSkipList(maxlevel)) to instantiate.
+// Use &ash.Map{*SkipList} or new(ash.Map).From(ash.NewSkipList(maxlevel)) to instantiate.
 type Map struct {
 	*SkipList
 }

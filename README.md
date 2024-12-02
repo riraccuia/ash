@@ -1,13 +1,13 @@
 # Ash
 
-Ash is a concurrent, lock-free **A**tomic **S**kiplist **H**ash map. It is intended as a drop-in replacement for `sync.Map` and is designed to operate concurrently without relying on locks, instead using atomic operations and pointer tagging techniques.
+Ash is a concurrent, lock-free **A**tomic **S**kiplist **H**ash map written in golang. It is intended as a drop-in replacement for `sync.Map` and is designed to operate concurrently without relying on locks, instead using atomic operations and pointer tagging techniques.
 
-## Inspiration
+## Motivation
 
-Through my years of experience writing go code professionally, built-in `map` and `sync.Map` are certainly among the data structures that I have used the most, and not without some level of frustration.  
-Although `sync.Map` was a great addition to the standard library, it is not ideal in every scenario: more often than not you just might be better off guarding a map's reads and writes using synchronization primitives like `Mutex` and/or `RWMutex` or some combination of both.  
+As part of writing go code professionally, built-in `map` and `sync.Map` are certainly among the data structures that I have used the most, and not without some level of frustration.  
+`sync.Map` was a great addition to the standard library, but it's not ideal in every scenario: more often than not you just might be better off guarding a map's reads and writes using synchronization primitives like `Mutex` and/or `RWMutex` or some combination of both.  
 With caches and network/priority queues being an important part of the codebases that I maintain at my company, I love learning new ways to squeeze a little performance.  
-YunHao Zhang's talk<sup>[1]</sup> at Gophercon 2024 in Chicago was an inspiring introduction to the **skip list** data structure, which surprisingly enough is not implemented in any of the go standard lib.  
+YunHao Zhang's talk<sup>[[1]]</sup> at Gophercon 2024 in Chicago was an inspiring introduction to the **skip list** data structure, which surprisingly enough is not implemented in any of the go standard lib.  
 This library explores a lock-free implementation of the skip list as a way for me to both intimately understand it and get more hands-on experience with atomic primitives, as well as become a base for some future work.
 See the [References](https://github.com/riraccuia/ash?tab=readme-ov-file#pointer-tagging) section for the list of papers that inspired the implementation.
 
@@ -35,7 +35,7 @@ import (
 )
 
 func main() {
-    m := &ash.Map{}.From(ash.NewSkipList(32))
+    m := new(ash.Map).From(ash.NewSkipList(32))
 
     // Store a key-value pair
     m.Store("key", "value")
@@ -52,7 +52,7 @@ func main() {
 ```
 ## Pointer Tagging
 
-Consider the below representation of a pointer in modern architectures<sup>[2]</sup>:
+Consider the below representation of a pointer in modern architectures<sup>[[2]]</sup>:
 
 ```ascii
 
@@ -69,9 +69,9 @@ High                 |                                                         L
  +--> 48-63 (16 bits) Reserved
 ```
 Armed with this knowledge, we know that memory address (pointer) representations only use the lower 48 bits of a uint64, which gives us some options to improve logical deletion of nodes from the tree (markable reference).
-This package currently encodes a deletion flag (mark) in the lower 4 bits of the top byte (bits 56-59).
-Note that once marked, the pointer becomes unusable, and the object will be collected by GC, but that's what we want.
-
+This package currently encodes a deletion flag (mark) in the lower 4 bits of the top byte (bits 56-59).  
+Note that this currently works out of the box on `aarch64` thanks to TBI<sup>[[3]]</sup> (Top Byte Ignore) on linux and macOS (apple silicon).  
+For `amd64` the plan is to use `runtime.SetFinalizer` and `runtime.KeepAlive` to prevent GC from collecting Nodes too soon and crash while walking the tree.
 
 ## Contributing
 
@@ -88,3 +88,4 @@ This code is distributed under the MIT License. See the [LICENSE](https://github
 
 [1]: https://github.com/gophercon/2024-talks/tree/main/YunHaoZhang-BuildingaHighPerformanceConcurrentMapInGo "Building a High Performace Concurrent Map In Go {YunHao Zhang}"
 [2]: https://dl.acm.org/doi/abs/10.1145/3558200 "A Primer on Pointer Tagging {Chaitanya Koparkar}"
+[3]: https://www.linaro.org/blog/top-byte-ignore-for-fun-and-memory-savings/ "Top Byte Ignore For Fun and Memory Savings"
