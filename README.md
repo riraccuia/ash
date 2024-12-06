@@ -87,13 +87,17 @@ goarch: arm64
 pkg: ash
 cpu: Apple M1
 BenchmarkSyncMap_70Load20Store10Delete
-    map_bench_test.go:50: sync.Map total calls to Store/Delete/Load:  3500225 / 500388 / 999387 /
-    map_bench_test.go:55: Execution time:  1.468545583s
-BenchmarkSyncMap_70Load20Store10Delete-8         5000000               293.7 ns/op            52 B/op          2 allocs/op
+    map_bench_test.go:50: sync.Map total calls to Store/Delete/Load:  0 / 0 / 1 /
+    map_bench_test.go:55: Execution time:  62.917µs
+    map_bench_test.go:50: sync.Map total calls to Store/Delete/Load:  1000010 / 499183 / 3500807 /
+    map_bench_test.go:55: Execution time:  1.415291833s
+BenchmarkSyncMap_70Load20Store10Delete-8         5000000               283.1 ns/op            52 B/op          0 allocs/op
 BenchmarkAshMap_70Load20Store10Delete
-    map_bench_test.go:97: ash.Map total calls to Store/Delete/Load:  3500691 / 499257 / 1000052 /
-    map_bench_test.go:103: Execution time:  546.867166ms
-BenchmarkAshMap_70Load20Store10Delete-8          5000000               109.4 ns/op           141 B/op          3 allocs/op
+    map_bench_test.go:97: ash.Map total calls to Store/Delete/Load:  0 / 0 / 1 /
+    map_bench_test.go:103: Execution time:  10.75µs
+    map_bench_test.go:97: ash.Map total calls to Store/Delete/Load:  1000134 / 499997 / 3499869 /
+    map_bench_test.go:103: Execution time:  484.099ms
+BenchmarkAshMap_70Load20Store10Delete-8          5000000                96.82 ns/op           84 B/op          1 allocs/op
 ```
 
 ## Contributing

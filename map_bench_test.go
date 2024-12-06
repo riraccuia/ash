@@ -38,12 +38,12 @@ func BenchmarkSyncMap_70Load20Store10Delete(b *testing.B) {
 				continue
 			}
 			if r < 3 {
-				cache.Load(keys[cnt%total])
-				atomic.AddInt64(&loadCnt, 1)
+				cache.Store(keys[cnt%total], cnt)
+				atomic.AddInt64(&storeCnt, 1)
 				continue
 			}
-			cache.Store(keys[cnt%total], cnt)
-			atomic.AddInt64(&storeCnt, 1)
+			cache.Load(keys[cnt%total])
+			atomic.AddInt64(&loadCnt, 1)
 		}
 	})
 	b.Cleanup(func() {
@@ -85,12 +85,12 @@ func BenchmarkAshMap_70Load20Store10Delete(b *testing.B) {
 				continue
 			}
 			if r < 3 {
-				cache.Load(keys[cnt%total])
-				atomic.AddInt64(&loadCnt, 1)
+				cache.Store(keys[cnt%total], cnt)
+				atomic.AddInt64(&storeCnt, 1)
 				continue
 			}
-			cache.Store(keys[cnt%total], cnt)
-			atomic.AddInt64(&storeCnt, 1)
+			cache.Load(keys[cnt%total])
+			atomic.AddInt64(&loadCnt, 1)
 		}
 	})
 	b.Cleanup(func() {
