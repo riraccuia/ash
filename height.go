@@ -11,7 +11,7 @@ const (
 var (
 	// PValue defines the fixed probability that an element in level i appears in level i+1.
 	// Defaults to 1/2, another commonly used value for it is 1/4.
-	PValue = 0.50
+	PValue = 0.5
 	// RandomHeightFunc is the function that returns the height for any new element to store in a skip list.
 	// It is possible to override this function provided that the return value does not exceed maxLevel.
 	RandomHeightFunc func(maxLevel int) int = randomHeight
