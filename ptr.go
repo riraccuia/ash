@@ -16,6 +16,10 @@ func TagPointer(ptr unsafe.Pointer, flag int) unsafe.Pointer {
 	return unsafe.Pointer(uintptr(ptr) | uintptr(flag)<<56)
 }
 
+// PointerFromTagPointer clears the higher 8 bits from the pointer address, effectively
+// removing all of the tagging that might have been applied to it. This is useful because on
+// platforms where TBI is not or cannot be enabled, calling an object using the 'tainted'
+// pointer will cause a crash.
 func PointerFromTagPointer(tp unsafe.Pointer) unsafe.Pointer {
 	return unsafe.Pointer(uintptr(uintptr(tp) ^ (uintptr(tp) & (0xff << 56))))
 }
@@ -23,26 +27,3 @@ func PointerFromTagPointer(tp unsafe.Pointer) unsafe.Pointer {
 func IsPointerMarked(ptr unsafe.Pointer) bool {
 	return ((uintptr(ptr) >> 56) & marked) != 0
 }
-
-/*
-func GetTaggablePointer(ptr unsafe.Pointer) uint64 {
-    return uint64(uintptr(ptr))
-}
-
-func RestorePointer(ptr *uint64) unsafe.Pointer {
-    return unsafe.Pointer(uintptr(ReturnPointer(ptr)))
-}
-
-func TagPointer(ptr *uint64, i uint64) {
-    x := *ptr | i
-    *ptr = x
-}
-
-func ReturnPointer(ptr *uint64) uint64 {
-    return *ptr &^ uint64(7)
-}
-
-func ReturnTag(ptr *uint64) uint64 {
-    return *ptr & uint64(7)
-}
-*/

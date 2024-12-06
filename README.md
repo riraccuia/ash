@@ -5,10 +5,9 @@ Ash is a concurrent, lock-free **A**tomic **S**kiplist **H**ash map written in g
 ## Motivation
 
 As part of writing go code professionally, built-in `map` and `sync.Map` are certainly among the data structures that I have used the most, and not without some level of frustration.  
-`sync.Map` was a great addition to the standard library, but it's not ideal in every scenario: more often than not you just might be better off guarding a map's reads and writes using synchronization primitives like `Mutex` and/or `RWMutex` or some combination of both.  
-With caches and network/priority queues being an important part of the codebases that I maintain at my company, I love learning new ways to squeeze a little performance.  
+`sync.Map` was a great addition to the standard library, but it's not ideal in every scenario: more often than not I find myself guarding a map's reads and writes using synchronization primitives like `Mutex` and/or `RWMutex` or some combination of both.  
 YunHao Zhang's talk<sup>[[1]]</sup> at Gophercon 2024 in Chicago was an inspiring introduction to the **skip list** data structure, which surprisingly enough is not implemented in any of the go standard lib.  
-This library explores a lock-free implementation of the skip list as a way for me to both intimately understand it and get more hands-on experience with atomic primitives, as well as become a base for some future work.
+This library explores a lock-free implementation of the skip list as a way to challenge myself and learn something new.
 See the [References](https://github.com/riraccuia/ash?tab=readme-ov-file#pointer-tagging) section for the list of papers that inspired the implementation.
 
 ## Features
@@ -20,7 +19,14 @@ See the [References](https://github.com/riraccuia/ash?tab=readme-ov-file#pointer
 
 ## Status
 
-This library is under active development
+This library is under active development.  
+At this time I have only tested on the following:
+```
+goos: darwin
+goarch: arm64
+pkg: ash
+cpu: Apple M1
+```
 
 ## Usage
 
@@ -69,9 +75,26 @@ High                 |                                                         L
  +--> 48-63 (16 bits) Reserved
 ```
 Armed with this knowledge, we know that memory address (pointer) representations only use the lower 48 bits of a uint64, which gives us some options to improve logical deletion of nodes from the tree (markable reference).
-This package currently encodes a deletion flag (mark) in the lower 4 bits of the top byte (bits 56-59).  
-Note that this currently works out of the box on `aarch64` thanks to TBI<sup>[[3]]</sup> (Top Byte Ignore) on linux and macOS (apple silicon).  
-For `amd64` the plan is to use `runtime.SetFinalizer` and `runtime.KeepAlive` to prevent GC from collecting Nodes too soon and crash while walking the tree.
+This package currently encodes a deletion flag (mark) in the top byte (bits 56-63) of the address.  
+TBI<sup>[[3]]</sup> (Top Byte Ignore) should allow direct usage of the tainted pointer on linux/macOS with `aarch64` but the top 8 bits of the address are being cleared prior to consuming it.
+
+## Benchmarks
+
+```
+% go test -v -run=NOTEST -bench=. -benchtime=5000000x -benchmem -cpu=8 -count=1
+goos: darwin
+goarch: arm64
+pkg: ash
+cpu: Apple M1
+BenchmarkSyncMap_70Load20Store10Delete
+    map_bench_test.go:50: sync.Map total calls to Store/Delete/Load:  3500225 / 500388 / 999387 /
+    map_bench_test.go:55: Execution time:  1.468545583s
+BenchmarkSyncMap_70Load20Store10Delete-8         5000000               293.7 ns/op            52 B/op          2 allocs/op
+BenchmarkAshMap_70Load20Store10Delete
+    map_bench_test.go:97: ash.Map total calls to Store/Delete/Load:  3500691 / 499257 / 1000052 /
+    map_bench_test.go:103: Execution time:  546.867166ms
+BenchmarkAshMap_70Load20Store10Delete-8          5000000               109.4 ns/op           141 B/op          3 allocs/op
+```
 
 ## Contributing
 
