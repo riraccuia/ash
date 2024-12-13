@@ -1,4 +1,4 @@
-module ash
+module github.com/riraccuia/ash
 
 go 1.23
 
