@@ -13,7 +13,7 @@ import (
 //	(ptr|2<<56) ->
 //	00000010_00000000_00000001_01000000_00000000_00000000_11100001_10111000
 func TagPointer(ptr unsafe.Pointer, flag int) unsafe.Pointer {
-	return unsafe.Pointer(uintptr(ptr) | uintptr(flag)<<56)
+	return unsafe.Pointer(uintptr(uintptr(ptr) | uintptr(flag)<<56))
 }
 
 // PointerFromTagPointer clears the higher 8 bits from the pointer address, effectively

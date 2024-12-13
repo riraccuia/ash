@@ -1,16 +1,14 @@
 package ash
 
 import (
-	"runtime"
 	"sync/atomic"
 	"unsafe"
 )
 
 // SkipList is a lock-free, concurrent safe skip list implementation.
 type SkipList struct {
-	start    Node
-	topLevel uint64
-	maxLevel uint64
+	start              Node
+	topLevel, maxLevel uint64
 }
 
 // NewSkipList returns a lock-free, concurrent safe skip list with its maxlevel set to the given height.
@@ -33,8 +31,7 @@ func NewSkipList(maxLevel int) *SkipList {
 // Search calls FindNode() with the 'full' parameter set to false
 // Returns the node, if found, or nil.
 func (sl *SkipList) Search(key uint64) (nd *Node) {
-	nd = sl.FindNode(key, false, nil, nil)
-	return
+	return sl.FindNode(key, false, nil, nil)
 }
 
 // FindNode performs a search from the top level to the bottom level to find the target element.
@@ -106,7 +103,7 @@ func (sl *SkipList) Store(key uint64, val any) {
 			nd.tower.AddPtrUnsafe(level, unsafe.Pointer(succs[level]))
 		}
 		// atomically link the node to its predecessor in the bottom level
-		if !preds[0].tower.SwapNext(0, unsafe.Pointer(succs[0]), unsafe.Pointer(nd)) {
+		if !preds[0].tower.CompareAndSwapNext(0, unsafe.Pointer(succs[0]), unsafe.Pointer(nd)) {
 			// cas failed, need to start over
 			continue
 		}
@@ -122,7 +119,7 @@ func (sl *SkipList) Store(key uint64, val any) {
 			if pred == nil {
 				pred = &sl.start
 			}
-			if !pred.tower.SwapNext(level, unsafe.Pointer(succ), unsafe.Pointer(nd)) {
+			if !pred.tower.CompareAndSwapNext(level, unsafe.Pointer(succ), unsafe.Pointer(nd)) {
 				retry = true
 				break
 			}
@@ -155,19 +152,19 @@ func (sl *SkipList) Delete(key uint64) (nd *Node, deleted bool) {
 			if prev == nil || succ != nd {
 				continue
 			}
-			if !prev.tower.SwapNext(level, unsafe.Pointer(nd), taggedPtr) {
+			if !prev.tower.CompareAndSwapNext(level, unsafe.Pointer(nd), taggedPtr) {
 				retry = true
 				break
 			}
 			nxt := unsafe.Pointer(nd.Next(level))
 			// now that we marked the node, it is safe to unlink it
-			if !prev.tower.SwapNext(level, taggedPtr, nxt) {
+			if !prev.tower.CompareAndSwapNext(level, taggedPtr, nxt) {
 				retry = true
 				break
 			}
 		}
 		if retry {
-			runtime.Gosched()
+			// runtime.Gosched()
 			nd = sl.FindNode(key, true, &preds, &succs)
 			continue
 		}

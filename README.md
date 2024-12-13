@@ -108,6 +108,12 @@ Contributions are encouraged. Issues and pull requests can be submitted through 
 
 This code is distributed under the MIT License. See the [LICENSE](https://github.com/riraccuia/ash/blob/main/LICENSE) file for details.
 
+## Credits
+
+- https://github.com/cespare/xxhash : great Go implementation of the 64-bit xxHash algorithm, this is what ash uses to hash keys.
+- https://www.cloudcentric.dev/implementing-a-skip-list-in-go/ : pseudo-random height generation.
+- https://github.com/zhangyunhao116/skipmap : YunHao's work, thanks for the inspiration.
+
 ## References
 
 - https://supertaunt.github.io/CMU_15618_project.github.io/

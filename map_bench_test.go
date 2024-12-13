@@ -2,7 +2,6 @@ package ash
 
 import (
 	"math/rand"
-	"strconv"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -102,20 +101,4 @@ func BenchmarkAshMap_70Load20Store10Delete(b *testing.B) {
 		//" total: ", atomic.LoadInt64(&totalCnt))
 		b.Log("Execution time: ", b.Elapsed())
 	})
-}
-
-func generateKeys(numKeys int) []string {
-	var keys []string
-	for i := 0; i < numKeys; i++ {
-		keys = append(keys, ("key-" + strconv.Itoa(i)))
-	}
-	return keys
-}
-
-func generateIntKeys(numKeys int) []int {
-	var keys []int
-	for i := 0; i < numKeys; i++ {
-		keys = append(keys, i)
-	}
-	return keys
 }

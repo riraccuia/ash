@@ -67,13 +67,15 @@ func (m *Map) CompareAndSwap(key, old, new any) (swapped bool) {
 
 // Delete deletes the value for a key.
 func (m *Map) Delete(key any) {
-	m.SkipList.Delete(HashFunc(key))
+	hKey := HashFunc(key)
+	m.SkipList.Delete(hKey)
 }
 
 // Load returns the value stored in the map for a key, or nil if no value is present.
 // The ok result indicates whether value was found in the map.
 func (m *Map) Load(key any) (value any, ok bool) {
-	nd := m.SkipList.Search(HashFunc(key))
+	hKey := HashFunc(key)
+	nd := m.SkipList.Search(hKey)
 	if nd == nil {
 		return nil, false
 	}
@@ -84,7 +86,8 @@ func (m *Map) Load(key any) (value any, ok bool) {
 // LoadAndDelete deletes the value for a key, returning the previous value if any.
 // The loaded result reports whether the key was present.
 func (m *Map) LoadAndDelete(key any) (value any, loaded bool) {
-	nd, _ := m.SkipList.Delete(HashFunc(key))
+	hKey := HashFunc(key)
+	nd, _ := m.SkipList.Delete(hKey)
 	if nd == nil {
 		return
 	}
