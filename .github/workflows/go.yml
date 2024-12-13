@@ -1,0 +1,28 @@
+name: ci-ash-tests
+
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+
+jobs:
+
+  build:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Set up Go
+      uses: actions/setup-go@v4
+      with:
+        go-version: '1.23'
+
+    - name: Build
+      run: go build -v ./...
+
+    - name: Test
+      run: go test -v ./... -race
+
+    - name: Benchmarks
+      run: go test -v -run=NOTEST -bench=. -benchtime=1000000x -benchmem -cpu=1,2,4,8 -count=1
