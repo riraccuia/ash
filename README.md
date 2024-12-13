@@ -1,4 +1,5 @@
 # Ash
+[![Go Reference](https://pkg.go.dev/badge/github.com/riraccuia/ash.svg)](https://pkg.go.dev/github.com/riraccuia/ash)
 
 Ash is a concurrent, lock-free **A**tomic **S**kiplist **H**ash map written in golang. It is intended as a drop-in replacement for `sync.Map` and is designed to operate concurrently without relying on locks, instead using atomic operations and pointer tagging techniques.
 
