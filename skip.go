@@ -1,6 +1,7 @@
 package ash
 
 import (
+	"runtime"
 	"sync/atomic"
 	"unsafe"
 )
@@ -169,6 +170,7 @@ func (sl *SkipList) Delete(key uint64) (nd *Node, deleted bool) {
 			continue
 		}
 		deleted = true
+		runtime.KeepAlive(nd)
 		break
 	}
 	return
